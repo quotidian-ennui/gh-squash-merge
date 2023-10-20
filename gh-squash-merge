@@ -3,18 +3,33 @@ set -eo pipefail
 
 GH_REST_API_VERSION="X-GitHub-Api-Version: 2022-11-28"
 GH_ACCEPT="Accept: application/vnd.github+json"
+WORK_FILE=$(mktemp --tmpdir squash-merge-commit-msg.XXXXXX)
 
-function gh_api() {
+gh_api() {
   gh api -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" "$@"
+}
+
+cleanup() {
+  if [[ -n "${WORK_FILE:-}" ]]; then
+    rm -f "$WORK_FILE"
+  fi
 }
 
 usage() {
   cat << EOF
 
-Usage: gh squash-merge <pr-number>
+Usage: gh squash-merge <pr-number> [--keep-branch]
 
 Issues a squash merge on the PR number provided.
 
+Required arguments
+  <pr-number> The PR number to squash merge
+
+Optional arguments
+  --keep-branch  Do not delete the branch after merge
+                 default is to delete the branch.
+
+Notes:
 - The title of the commit is the title of the PR
 - The PR body contains a section similar to the following which lets us autogenerate
   squash merge commit message
@@ -32,14 +47,41 @@ EOF
  exit 1
 }
 
+write_commit_msg() {
+  local gh_repo="$1"
+  local pr_number="$2"
+  gh_api "repos/$gh_repo/pulls/$pr_number" -q ".body" | awk '/SQUASH_MERGE_START/,/SQUASH_MERGE_END/' | grep -v "SQUASH_MERGE" > "$WORK_FILE"
+  echo "$WORK_FILE"
+}
+
+trap cleanup 1 2 15
+
+delete_branch="--delete-branch"
+while true; do
+  case "${1}" in
+    (-h | --help)
+      usage
+      ;;
+    (-k | --keep-branch)
+      delete_branch=""
+      shift
+      ;;
+    (*)
+      break
+      ;;
+  esac
+done
+
+pr_number=("${@}")
 gh_repo=$(gh repo view --json "nameWithOwner" -q ".nameWithOwner") || true
 
-if [[ "$gh_repo" == "" || "$1" == "" ]]; then
+if [[ -n "${gh_repo:-}" && -z "${pr_number:-}" ]]; then
   echo "Sorry, need to be in a github repo and have a PR number"
   usage
 fi
 
-title=$(gh_api "repos/$gh_repo/pulls/$1" -q ".title")
-body=$(gh_api "repos/$gh_repo/pulls/$1" -q ".body" | awk '/SQUASH_MERGE_START/,/SQUASH_MERGE_END/' | grep -v "SQUASH_MERGE")
 
-echo "$body" | gh pr merge -d -s --subject "$title" -F - "$1"
+title=$(gh_api "repos/$gh_repo/pulls/$pr_number" -q ".title")
+commit_msg_file=$(write_commit_msg "$gh_repo" "$pr_number")
+gh pr merge "$delete_branch" -s --subject "$title" -F "$commit_msg_file" "$pr_number"
+cleanup
