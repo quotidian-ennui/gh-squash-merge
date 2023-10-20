@@ -56,6 +56,9 @@ write_commit_msg() {
 
 trap cleanup 1 2 15
 
+ARGS=$(getopt --options 'k::h' --longoptions 'keep-branch,pr:,help' -- "${@}")
+eval "set -- ${ARGS}"
+
 delete_branch="--delete-branch"
 while true; do
   case "${1}" in
@@ -66,8 +69,11 @@ while true; do
       delete_branch=""
       shift
       ;;
-    (*)
+    (--)
+      shift
       break
+    (*)
+      usage
       ;;
   esac
 done
@@ -80,8 +86,6 @@ if [[ -n "${gh_repo:-}" && -z "${pr_number:-}" ]]; then
   usage
 fi
 
-
-title=$(gh_api "repos/$gh_repo/pulls/$pr_number" -q ".title")
 commit_msg_file=$(write_commit_msg "$gh_repo" "$pr_number")
-gh pr merge "$delete_branch" -s --subject "$title" -F "$commit_msg_file" "$pr_number"
+gh pr merge "$pr_number" "$delete_branch" --squash -F "$commit_msg_file"
 cleanup
