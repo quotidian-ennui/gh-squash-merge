@@ -55,7 +55,7 @@ trap cleanup 1 2 15
 pr_number="$1"
 gh_repo=$(gh repo view --json "nameWithOwner" -q ".nameWithOwner") || true
 
-if [[ -n "${gh_repo:-}" && -z "${pr_number:-}" ]]; then
+if [[ -z "${gh_repo:-}" || -z "${pr_number:-}" ]]; then
   echo "Sorry, need to be in a github repo and have a PR number"
   usage
 fi
