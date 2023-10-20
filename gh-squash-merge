@@ -18,7 +18,7 @@ cleanup() {
 usage() {
   cat << EOF
 
-Usage: gh squash-merge <pr-number> [--keep-branch]
+Usage: gh squash-merge [--keep-branch] <pr-number>
 
 Issues a squash merge on the PR number provided.
 
