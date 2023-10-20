@@ -35,16 +35,12 @@ You probably want to have a `pull_request_template.md` available in your repo / 
 ### Usage
 
 ```
-Usage: gh squash-merge [--keep-branch] <pr-number>
+Usage: gh squash-merge <pr-number>
 
 Issues a squash merge on the PR number provided.
 
 Required arguments
   <pr-number> The PR number to squash merge
-
-Optional arguments
-  --keep-branch  Do not delete the branch after merge
-                 default is to delete the branch.
 
 Notes:
 - The title of the commit is the title of the PR
@@ -60,7 +56,6 @@ but generally we tend towards
 EXAMPLES
 gh squash-merge 811
 ```
-
 
 ## License
 

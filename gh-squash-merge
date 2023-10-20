@@ -18,16 +18,12 @@ cleanup() {
 usage() {
   cat << EOF
 
-Usage: gh squash-merge [--keep-branch] <pr-number>
+Usage: gh squash-merge <pr-number>
 
 Issues a squash merge on the PR number provided.
 
 Required arguments
   <pr-number> The PR number to squash merge
-
-Optional arguments
-  --keep-branch  Do not delete the branch after merge
-                 default is to delete the branch.
 
 Notes:
 - The title of the commit is the title of the PR
@@ -56,29 +52,7 @@ write_commit_msg() {
 
 trap cleanup 1 2 15
 
-ARGS=$(getopt --options 'k::h' --longoptions 'keep-branch,pr:,help' -- "${@}")
-eval "set -- ${ARGS}"
-
-delete_branch="--delete-branch"
-while true; do
-  case "${1}" in
-    (-h | --help)
-      usage
-      ;;
-    (-k | --keep-branch)
-      delete_branch=""
-      shift
-      ;;
-    (--)
-      shift
-      break
-    (*)
-      usage
-      ;;
-  esac
-done
-
-pr_number=("${@}")
+pr_number="$1"
 gh_repo=$(gh repo view --json "nameWithOwner" -q ".nameWithOwner") || true
 
 if [[ -n "${gh_repo:-}" && -z "${pr_number:-}" ]]; then
@@ -87,5 +61,6 @@ if [[ -n "${gh_repo:-}" && -z "${pr_number:-}" ]]; then
 fi
 
 commit_msg_file=$(write_commit_msg "$gh_repo" "$pr_number")
-gh pr merge "$pr_number" "$delete_branch" --squash -F "$commit_msg_file"
+title=$(gh_api "repos/$gh_repo/pulls/$pr_number" -q ".title")
+gh pr merge "$pr_number" -d --squash -F "$commit_msg_file" --subject "$title"
 cleanup
