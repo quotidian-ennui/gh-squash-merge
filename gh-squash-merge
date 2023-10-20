@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+GH_REST_API_VERSION="X-GitHub-Api-Version: 2022-11-28"
+GH_ACCEPT="Accept: application/vnd.github+json"
+
+function gh_api() {
+  gh api -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" "$@"
+}
+
+usage() {
+  cat << EOF
+
+Usage: gh squash-merge <pr-number>
+
+Issues a squash merge on the PR number provided.
+
+- The title of the commit is the title of the PR
+- The PR body contains a section similar to the following which lets us autogenerate
+  squash merge commit message
+
+<!-- SQUASH_MERGE_START -->
+- this forms the body of the commit message and could be multiple lines
+but generally we tend towards
+- doc: conventional commit messages
+<!-- SQUASH_MERGE_END -->
+
+EXAMPLES
+gh squash-merge 811
+
+EOF
+ exit 1
+}
+
+gh_repo=$(gh repo view --json "nameWithOwner" -q ".nameWithOwner") || true
+
+if [[ "$gh_repo" == "" || "$1" == "" ]]; then
+  echo "Sorry, need to be in a github repo and have a PR number"
+  usage
+fi
+
+title=$(gh_api repos/$gh_repo/pulls/$1 -q ".title")
+body=$(gh_api repos/$gh_repo/pulls/$1 -q ".body" | awk '/SQUASH_MERGE_START/,/SQUASH_MERGE_END/' | grep -v "SQUASH_MERGE")
+
+echo $body | gh pr merge -d -s --subject "$title" -F - $1
