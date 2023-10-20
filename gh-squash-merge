@@ -39,7 +39,7 @@ if [[ "$gh_repo" == "" || "$1" == "" ]]; then
   usage
 fi
 
-title=$(gh_api repos/$gh_repo/pulls/$1 -q ".title")
-body=$(gh_api repos/$gh_repo/pulls/$1 -q ".body" | awk '/SQUASH_MERGE_START/,/SQUASH_MERGE_END/' | grep -v "SQUASH_MERGE")
+title=$(gh_api "repos/$gh_repo/pulls/$1" -q ".title")
+body=$(gh_api "repos/$gh_repo/pulls/$1" -q ".body" | awk '/SQUASH_MERGE_START/,/SQUASH_MERGE_END/' | grep -v "SQUASH_MERGE")
 
-echo $body | gh pr merge -d -s --subject "$title" -F - $1
+echo "$body" | gh pr merge -d -s --subject "$title" -F - "$1"
