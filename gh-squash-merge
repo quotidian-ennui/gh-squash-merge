@@ -1,13 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-GH_REST_API_VERSION="X-GitHub-Api-Version: 2022-11-28"
-GH_ACCEPT="Accept: application/vnd.github+json"
 WORK_FILE=$(mktemp --tmpdir squash-merge-commit-msg.XXXXXX)
-
-gh_api() {
-  gh api -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" "$@"
-}
 
 cleanup() {
   if [[ -n "${WORK_FILE:-}" ]]; then
@@ -16,14 +10,22 @@ cleanup() {
 }
 
 usage() {
-  cat << EOF
+  cat <<EOF
 
-Usage: gh squash-merge <pr-number>
+Usage: gh squash-merge [<number> | <url> | <branch>] [flags]
 
-Issues a squash merge on the PR number provided.
+Issues a squash merge on the PR.
 
-Required arguments
-  <pr-number> The PR number to squash merge
+Without an argument, the pull request that belongs to the current branch
+is used.
+
+Arguments
+  <number> The PR number to squash merge
+  <url> The PR URL to squash merge
+  <branch> The branch of PR URL to squash merge
+
+Flags
+  -R, --repo [HOST/]OWNER/REPO   Select another repository using the [HOST/]OWNER/REPO format
 
 Notes:
 - The title of the commit is the title of the PR
@@ -37,30 +39,62 @@ but generally we tend towards
 <!-- SQUASH_MERGE_END -->
 
 EXAMPLES
+gh squash-merge
 gh squash-merge 811
+gh squash-merge --repo quotidian-ennui/gh-squash-merge 811
+gh squash-merge https://github.com/quotidian-ennui/gh-squash-merge/pull/811
+gh squash-merge feature/update
 
 EOF
- exit 1
-}
-
-write_commit_msg() {
-  local gh_repo="$1"
-  local pr_number="$2"
-  gh_api "repos/$gh_repo/pulls/$pr_number" -q ".body" | awk '/SQUASH_MERGE_START/,/SQUASH_MERGE_END/' | grep -v "SQUASH_MERGE" > "$WORK_FILE"
-  echo "$WORK_FILE"
+  exit 1
 }
 
 trap cleanup 1 2 15
 
-pr_number="$1"
-gh_repo=$(gh repo view --json "nameWithOwner" -q ".nameWithOwner") || true
+ARGS=$(getopt --options 'R::h' --longoptions 'repo:,help' -- "${@}")
+eval "set -- ${ARGS}"
+while true; do
+  case "${1}" in
+  --h | --help)
+    usage
+    ;;
+  --R | --repo)
+    repo="${2}"
+    shift 2
+    ;;
+  --)
+    shift
+    break
+    ;;
+  *)
+    usage
+    ;;
+  esac
+done
 
-if [[ -z "${gh_repo:-}" || -z "${pr_number:-}" ]]; then
-  echo "Sorry, need to be in a github repo and have a PR number"
+remaining_args=("${1}")
+
+if [ -n "${repo:-}" ] && [ -z "${remaining_args:-}" ]; then
+  echo "argument required when using the --repo flag"
   usage
 fi
 
-commit_msg_file=$(write_commit_msg "$gh_repo" "$pr_number")
-title=$(gh_api "repos/$gh_repo/pulls/$pr_number" -q ".title")
-gh pr merge "$pr_number" -d --squash -F "$commit_msg_file" --subject "$title"
+details_args=()
+
+if [ -n "${repo:-}" ]; then
+  details_args+=('--repo')
+  details_args+=("${repo}")
+fi
+
+if [ -n "${remaining_args:-}" ]; then
+  details_args+=("${remaining_args}")
+fi
+
+pr_details=$(gh pr view --json title,body $"${details_args[@]}")
+
+title=$(jq -r .title <<<"$pr_details")
+body=$(jq -r .body <<<"$pr_details")
+
+echo "$body" | awk '/SQUASH_MERGE_START/,/SQUASH_MERGE_END/' | grep -v "SQUASH_MERGE" >"$WORK_FILE"
+gh pr merge $"${details_args[@]}" --delete-branch --squash --body-file "$WORK_FILE" --subject "$title"
 cleanup
