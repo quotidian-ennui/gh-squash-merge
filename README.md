@@ -17,7 +17,7 @@ This is an extension for [GitHub CLI](https://cli.github.com/) that just parses 
 
 You probably want to have a `pull_request_template.md` available in your repo / organisation that looks something like this; it should be self-explanatory what the boundary markers are and what the point of them are...
 
-```
+```markdown
 # Motivation
 <!-- Why am I doing this -->
 
@@ -34,13 +34,21 @@ You probably want to have a `pull_request_template.md` available in your repo / 
 
 ### Usage
 
-```
-Usage: gh squash-merge <pr-number>
+```text
+Usage: gh squash-merge [<number> | <url> | <branch>] [flags]
 
-Issues a squash merge on the PR number provided.
+Issues a squash merge on the PR.
 
-Required arguments
-  <pr-number> The PR number to squash merge
+Without an argument, the pull request that belongs to the current branch
+is used.
+
+Arguments
+  <number> The PR number to squash merge
+  <url> The PR URL to squash merge
+  <branch> The branch of PR URL to squash merge
+
+Flags
+  -R, --repo [HOST/]OWNER/REPO   Select another repository using the [HOST/]OWNER/REPO format
 
 Notes:
 - The title of the commit is the title of the PR
@@ -54,7 +62,11 @@ but generally we tend towards
 <!-- SQUASH_MERGE_END -->
 
 EXAMPLES
+gh squash-merge
 gh squash-merge 811
+gh squash-merge --repo quotidian-ennui/gh-squash-merge 811
+gh squash-merge https://github.com/quotidian-ennui/gh-squash-merge/pull/811
+gh squash-merge feature/update
 ```
 
 ## License
