@@ -90,11 +90,10 @@ if [ -n "${remaining_args:-}" ]; then
   details_args+=("${remaining_args}")
 fi
 
-pr_details=$(gh pr view --json title,body $"${details_args[@]}")
+pr_details=$(gh pr view --json body $"${details_args[@]}")
 
-title=$(jq -r .title <<<"$pr_details")
 body=$(jq -r .body <<<"$pr_details")
 
 echo "$body" | awk '/SQUASH_MERGE_START/,/SQUASH_MERGE_END/' | grep -v "SQUASH_MERGE" >"$WORK_FILE"
-gh pr merge $"${details_args[@]}" --delete-branch --squash --body-file "$WORK_FILE" --subject "$title"
+gh pr merge $"${details_args[@]}" --delete-branch --squash --body-file "$WORK_FILE"
 cleanup
