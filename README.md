@@ -9,7 +9,6 @@ This is an extension for [GitHub CLI](https://cli.github.com/) that just parses 
 ## Installation
 
 - [GitHub CLI](https://cli.github.com/) is already installed and authenticated
-- `jq` is available
 - `awk` is available, untested with awk on MacOS; but I don't think I'm doing anything _special_ in `awk`...
 - `mktemp` is available, untested with `mktemp` on MacOS; but `--tmpdir` isn't that special right?
 - `gh extension install quotidian-ennui/gh-squash-merge`
