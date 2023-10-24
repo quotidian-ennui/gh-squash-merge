@@ -9,8 +9,8 @@ This is an extension for [GitHub CLI](https://cli.github.com/) that just parses 
 ## Installation
 
 - [GitHub CLI](https://cli.github.com/) is already installed and authenticated
-- awk is available, untested with awk on MacOS; but I don't think I'm doing anything _special_ in awk...
-- mktemp is available, untested with mktemp on MacOS; but `--tmpdir` isn't that special right?
+- `awk` is available, untested with awk on MacOS; but I don't think I'm doing anything _special_ in `awk`...
+- `mktemp` is available, untested with `mktemp` on MacOS; but `--tmpdir` isn't that special right?
 - `gh extension install quotidian-ennui/gh-squash-merge`
 
 ## Setup
@@ -51,9 +51,10 @@ Flags
   -R, --repo [HOST/]OWNER/REPO   Select another repository using the [HOST/]OWNER/REPO format
 
 Notes:
-- The title of the commit is the title of the PR
+- The title of the commit will be based on GitHub repository settings
 - The PR body contains a section similar to the following which lets us autogenerate
   squash merge commit message
+- If PR body does not contain a section similar an empty body will be set
 
 <!-- SQUASH_MERGE_START -->
 - this forms the body of the commit message and could be multiple lines
