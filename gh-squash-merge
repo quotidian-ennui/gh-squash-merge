@@ -25,6 +25,8 @@ Arguments
   <branch> The branch of PR URL to squash merge
 
 Flags
+      --admin                    Use administrator privileges to merge a pull request that does not meet requirement
+      --auto                     Automatically merge only after necessary requirements are met
   -R, --repo [HOST/]OWNER/REPO   Select another repository using the [HOST/]OWNER/REPO format
 
 Notes:
@@ -52,7 +54,9 @@ EOF
 
 trap cleanup 1 2 15
 
-ARGS=$(getopt --options 'R::h' --longoptions 'repo:,help' -- "${@}")
+additional_args=()
+
+ARGS=$(getopt --options 'R::h' --longoptions 'repo:,help,admin,auto' -- "${@}")
 eval "set -- ${ARGS}"
 while true; do
   case "${1}" in
@@ -62,6 +66,10 @@ while true; do
   --R | --repo)
     repo="${2}"
     shift 2
+    ;;
+  --admin | --auto)
+    additional_args+=("${1}")
+    shift
     ;;
   --)
     shift
@@ -94,5 +102,5 @@ fi
 body=$(gh pr view --json body $"${details_args[@]}" --jq '.body')
 
 echo "$body" | awk '/SQUASH_MERGE_START/,/SQUASH_MERGE_END/' | { grep -v "SQUASH_MERGE" || test $? = 1; } >"$WORK_FILE"
-gh pr merge $"${details_args[@]}" --delete-branch --squash --body-file "$WORK_FILE"
+gh pr merge $"${details_args[@]}" --delete-branch --squash --body-file "$WORK_FILE" $"${additional_args[@]}"
 cleanup
