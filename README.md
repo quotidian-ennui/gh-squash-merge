@@ -48,7 +48,10 @@ Arguments
   <branch> The branch of PR URL to squash merge
 
 Flags
+      --admin                    Use administrator privileges to merge a pull request that does not meet requirement
+      --auto                     Automatically merge only after necessary requirements are met
   -R, --repo [HOST/]OWNER/REPO   Select another repository using the [HOST/]OWNER/REPO format
+      --dry-run                  dry run; in effect print the message that would be used for the squash commit
 
 Notes:
 - The title of the commit will be based on GitHub repository settings
