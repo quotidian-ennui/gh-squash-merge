@@ -105,14 +105,19 @@ if [ -n "${remaining_args:-}" ]; then
   details_args+=("${remaining_args}")
 fi
 
-body=$(gh pr view --json body $"${details_args[@]}" --jq '.body')
+pr_view=$(gh pr view --json "number,body" $"${details_args[@]}")
+
+body=$(jq -r '.body' <<<"$pr_view")
+number=$(jq -r '.number' <<<"$pr_view")
 
 echo "$body" | awk '/SQUASH_MERGE_START/,/SQUASH_MERGE_END/' | { grep -v "SQUASH_MERGE" || test $? = 1; } >"$WORK_FILE"
+
 if [[ "$DRY_RUN" == "true" ]]; then
   title=$(gh pr view --json title $"${details_args[@]}" --jq '.title')
-  echo -e "$title\n"
+  echo -e "$title (#$number)\n"
   cat "$WORK_FILE"
 else
   gh pr merge $"${details_args[@]}" --delete-branch --squash --body-file "$WORK_FILE" $"${additional_args[@]}"
 fi
+
 cleanup
