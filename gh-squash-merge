@@ -75,7 +75,7 @@ while true; do
   --h | --help)
     usage
     ;;
-  --repo | -R )
+  --repo | -R)
     repo="${2}"
     shift 2
     ;;
@@ -124,7 +124,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
   if [[ -s "$WORK_FILE" ]]; then
     cat "$WORK_FILE"
   else
-    echo -e "⚠️ no message body in the PR"
+    echo -e "⚠️ no squash-merge body in the PR"
   fi
 else
   if [[ -s "$WORK_FILE" ]]; then
