@@ -29,7 +29,8 @@ Flags
       --auto                     Automatically merge only after necessary requirements are met
   -R, --repo [HOST/]OWNER/REPO   Select another repository using the [HOST/]OWNER/REPO format
       --dry-run                  dry run; in effect print the message that would be used for the squash commit
-
+  -U, --use-default-msg          If there is nothing that could be used as the message; just do
+                                 gh pr merge --delete-branch --squash
 Notes:
 - The title of the commit will be based on GitHub repository settings
 - The PR body contains a section similar to the following which lets us autogenerate
@@ -58,7 +59,8 @@ trap cleanup 1 2 15
 additional_args=()
 
 DRY_RUN=false
-ARGS=$(getopt --options 'R::h' --longoptions 'repo:,help,admin,auto,dry-run' -- "${@}")
+USE_DEFAULT_MSG=false
+ARGS=$(getopt --options 'R::hU' --longoptions 'repo:,help,admin,auto,dry-run,use-default-msg' -- "${@}")
 eval "set -- ${ARGS}"
 while true; do
   case "${1}" in
@@ -66,10 +68,14 @@ while true; do
     DRY_RUN=true
     shift
     ;;
+  --use-default-msg | -U)
+    USE_DEFAULT_MSG=true
+    shift
+    ;;
   --h | --help)
     usage
     ;;
-  --R | --repo)
+  --repo | -R )
     repo="${2}"
     shift 2
     ;;
@@ -115,9 +121,22 @@ echo "$body" | awk '/SQUASH_MERGE_START/,/SQUASH_MERGE_END/' | { grep -v "SQUASH
 if [[ "$DRY_RUN" == "true" ]]; then
   title=$(gh pr view --json title $"${details_args[@]}" --jq '.title')
   echo -e "$title (#$number)\n"
-  cat "$WORK_FILE"
+  if [[ -s "$WORK_FILE" ]]; then
+    cat "$WORK_FILE"
+  else
+    echo -e "⚠️ no message body in the PR"
+  fi
 else
-  gh pr merge $"${details_args[@]}" --delete-branch --squash --body-file "$WORK_FILE" $"${additional_args[@]}"
+  if [[ -s "$WORK_FILE" ]]; then
+    gh pr merge $"${details_args[@]}" --delete-branch --squash --body-file "$WORK_FILE" $"${additional_args[@]}"
+  else
+    if [[ "$USE_DEFAULT_MSG" == "true" ]]; then
+      echo -e "\nℹ️ Using Default Message"
+      gh pr merge $"${details_args[@]}" --delete-branch --squash $"${additional_args[@]}"
+    else
+      echo -e "\n⚠️ no squash-merge body in the PR, not merging"
+    fi
+  fi
 fi
 
 cleanup

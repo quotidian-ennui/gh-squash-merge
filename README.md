@@ -52,7 +52,8 @@ Flags
       --auto                     Automatically merge only after necessary requirements are met
   -R, --repo [HOST/]OWNER/REPO   Select another repository using the [HOST/]OWNER/REPO format
       --dry-run                  dry run; in effect print the message that would be used for the squash commit
-
+  -U, --use-default-msg          If there is nothing that could be used as the message; just do
+                                 gh pr merge --delete-branch --squash
 Notes:
 - The title of the commit will be based on GitHub repository settings
 - The PR body contains a section similar to the following which lets us autogenerate
