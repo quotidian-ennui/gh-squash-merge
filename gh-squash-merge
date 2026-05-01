@@ -121,14 +121,12 @@ printf '%s\n' "$commit_msg" >"$WORK_FILE"
 
 if [[ "$DRY_RUN" == "true" ]]; then
   title=$(gh pr view --json title $"${details_args[@]}" --jq '.title')
-  echo ---
   echo -e "$title (#$number)\n"
   if [[ -s "$WORK_FILE" ]]; then
     cat "$WORK_FILE"
   else
     echo -e "⚠️ no squash-merge body in the PR"
   fi
-  echo ---
 else
   if [[ -s "$WORK_FILE" ]]; then
     gh pr merge $"${details_args[@]}" --delete-branch --squash --body-file "$WORK_FILE" $"${additional_args[@]}"
