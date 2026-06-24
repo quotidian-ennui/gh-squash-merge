@@ -58,6 +58,13 @@ trap cleanup 1 2 15
 
 additional_args=()
 
+has_data() {
+  if [[ -s "$WORK_FILE" ]] && grep -qE '[^[:space:]]' "$WORK_FILE"; then
+    return 0
+  fi
+  return 1
+}
+
 DRY_RUN=false
 USE_DEFAULT_MSG=false
 ARGS=$(getopt --options 'R::hU' --longoptions 'repo:,help,admin,auto,dry-run,use-default-msg' -- "${@}")
@@ -122,13 +129,13 @@ printf '%s\n' "$commit_msg" >"$WORK_FILE"
 if [[ "$DRY_RUN" == "true" ]]; then
   title=$(gh pr view --json title $"${details_args[@]}" --jq '.title')
   echo -e "$title (#$number)\n"
-  if [[ -s "$WORK_FILE" ]]; then
+  if has_data; then
     cat "$WORK_FILE"
   else
     echo -e "⚠️ no squash-merge body in the PR"
   fi
 else
-  if [[ -s "$WORK_FILE" ]]; then
+  if has_data; then
     gh pr merge $"${details_args[@]}" --delete-branch --squash --body-file "$WORK_FILE" $"${additional_args[@]}"
   else
     if [[ "$USE_DEFAULT_MSG" == "true" ]]; then
