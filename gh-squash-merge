@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 set -eo pipefail
+readonly GH_REST_API_VERSION="X-GitHub-Api-Version: 2022-11-28"
+readonly GH_ACCEPT="Accept: application/vnd.github+json"
 
 WORK_FILE=$(mktemp --tmpdir squash-merge-commit-msg.XXXXXX)
+ASYNC_WORK_FILE=""
+# Reuse from merge-train because this is the likely caller
+POLL_INTERVAL_SECS=${GH_POLL_INTERVAL_SECS:-30}
+# Reuse from merge-train because this is the likely caller
+GH_MERGE_TRAIN_MAX_ATTEMPTS=${GH_MERGE_TRAIN_MAX_ATTEMPTS:-4}
 
 cleanup() {
   if [[ -n "${WORK_FILE:-}" ]]; then
     rm -f "$WORK_FILE"
+  fi
+  if [[ -n "${ASYNC_WORK_FILE:-}" ]]; then
+    rm -f "$ASYNC_WORK_FILE"
   fi
 }
 
@@ -27,6 +37,7 @@ Arguments
 Flags
       --admin                    Use administrator privileges to merge a pull request that does not meet requirement
       --auto                     Automatically merge only after necessary requirements are met
+      --async                    Use the merge-async API command; cannot be used with --admin or --auto
   -R, --repo [HOST/]OWNER/REPO   Select another repository using the [HOST/]OWNER/REPO format
       --dry-run                  dry run; in effect print the message that would be used for the squash commit
   -U, --use-default-msg          If there is nothing that could be used as the message; just do
@@ -58,6 +69,84 @@ trap cleanup 1 2 15
 
 additional_args=()
 
+__sleep() {
+  local msg="$1"
+  echo -e "$msg"
+  sleep "$POLL_INTERVAL_SECS"
+}
+
+async_url() {
+  local pr_url="$1"
+  if [[ "$pr_url" =~ ^https://[^/]+/([^/]+)/([^/]+)/pull/([0-9]+)$ ]]; then
+    printf 'repos/%s/%s/pulls/%s/merge-async\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
+  else
+    printf 'Invalid pull request URL: %s\n' "$pr_url" >&2
+    return 1
+  fi
+}
+
+merge_response() {
+  local response="$1"
+  jq -r '.status // empty' <<<"$response"
+}
+
+execute_async_merge() {
+  local pr_url="$1"
+  local async_payload_file="$2"
+  local async_url
+  local mergeAttempts=0
+  local max_retries=$GH_MERGE_TRAIN_MAX_ATTEMPTS
+
+  async_url="$(async_url "$pr_url")"
+  response=$(gh_api --method PUT --input "$async_payload_file" "$async_url")
+  uuid=$(jq -r '.details.uuid // empty' <<<"$response")
+  if [[ -z "$uuid" ]]; then
+    echo "⚠️ Async merge response missing UUID" >&2
+    return 1
+  fi
+  while [[ $(merge_response "$response") != "merged" ]]; do
+    mergeAttempts=$((mergeAttempts + 1))
+    if [[ "$mergeAttempts" -ge "$max_retries" ]]; then
+      echo -e "\n🚫 Failed to merge in good time"
+      return 1
+    else
+      __sleep "💤 Waiting on async-merge to catch up, $POLL_INTERVAL_SECS seconds..."
+      response=$(gh_api "${async_url%/}/$uuid")
+    fi
+  done
+  echo "ℹ️ Async merge status: $(merge_response "$response")"
+  return 0
+}
+
+build_title() {
+  local title="$2"
+  local number="$1"
+  printf '%s (#%s)' "$title" "$number"
+}
+
+create_async_payload() {
+  local commit_title="$1"
+  local work_file="$2"
+
+  ASYNC_WORK_FILE=$(mktemp --tmpdir squash-merge-async.XXXXXX)
+  if has_data; then
+    jq --null-input \
+      --arg commit_title "$commit_title" \
+      --rawfile commit_message "$work_file" \
+      '{commit_title: $commit_title, commit_message: $commit_message, merge_method: "squash", merge_action: "default"}' \
+      >"$ASYNC_WORK_FILE"
+  else
+    jq --null-input \
+      --arg commit_title "$commit_title" \
+      '{commit_title: $commit_title, merge_method: "squash", merge_action: "default"}' \
+      >"$ASYNC_WORK_FILE"
+  fi
+}
+
+gh_api() {
+  gh api -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" "$@"
+}
+
 has_data() {
   if [[ -s "$WORK_FILE" ]] && grep -qE '[^[:space:]]' "$WORK_FILE"; then
     return 0
@@ -67,7 +156,8 @@ has_data() {
 
 DRY_RUN=false
 USE_DEFAULT_MSG=false
-ARGS=$(getopt --options 'R::hU' --longoptions 'repo:,help,admin,auto,dry-run,use-default-msg' -- "${@}")
+ASYNC=false
+ARGS=$(getopt --options 'R::hU' --longoptions 'repo:,help,admin,auto,async,dry-run,use-default-msg' -- "${@}")
 eval "set -- ${ARGS}"
 while true; do
   case "${1}" in
@@ -77,6 +167,10 @@ while true; do
     ;;
   --use-default-msg | -U)
     USE_DEFAULT_MSG=true
+    shift
+    ;;
+  --async)
+    ASYNC=true
     shift
     ;;
   --help | -h)
@@ -100,6 +194,11 @@ while true; do
   esac
 done
 
+if [[ "$ASYNC" == "true" && ${#additional_args[@]} -gt 0 ]]; then
+  echo "--async cannot be used with --admin or --auto"
+  exit 1
+fi
+
 remaining_args=("${1}")
 
 if [ -n "${repo:-}" ] && [ -z "${remaining_args:-}" ]; then
@@ -118,29 +217,42 @@ if [ -n "${remaining_args:-}" ]; then
   details_args+=("${remaining_args}")
 fi
 
-pr_view=$(gh pr view --json "number,body" $"${details_args[@]}")
+pr_view=$(gh pr view --json "number,body,url,title" $"${details_args[@]}")
 
 body=$(jq -r '.body' <<<"$pr_view")
 number=$(jq -r '.number' <<<"$pr_view")
+pr_url=$(jq -r '.url' <<<"$pr_view")
+pr_title="$(build_title "$number" "$(jq -r '.title' <<<"$pr_view")")"
 
 commit_msg=$(echo "$body" | awk '/SQUASH_MERGE_START/,/SQUASH_MERGE_END/' | { grep -v "SQUASH_MERGE" || test $? = 1; } | tr -d '\r' | sed '/^$/N;/^\n$/D')
 printf '%s\n' "$commit_msg" >"$WORK_FILE"
 
+if [[ "$ASYNC" == "true" ]]; then
+  create_async_payload "$pr_title" "$WORK_FILE"
+fi
+
 if [[ "$DRY_RUN" == "true" ]]; then
-  title=$(gh pr view --json title $"${details_args[@]}" --jq '.title')
-  echo -e "$title (#$number)\n"
+  echo -e "$pr_title\n"
   if has_data; then
     cat "$WORK_FILE"
   else
-    echo -e "⚠️ no squash-merge body in the PR"
+    echo "⚠️ no squash-merge body in the PR"
   fi
 else
   if has_data; then
-    gh pr merge $"${details_args[@]}" --delete-branch --squash --body-file "$WORK_FILE" $"${additional_args[@]}"
+    if [[ "$ASYNC" == "true" ]]; then
+      execute_async_merge "$pr_url" "$ASYNC_WORK_FILE"
+    else
+      gh pr merge "$pr_url" --delete-branch --squash --body-file "$WORK_FILE" $"${additional_args[@]}"
+    fi
   else
     if [[ "$USE_DEFAULT_MSG" == "true" ]]; then
       echo -e "\nℹ️ Using Default Message"
-      gh pr merge $"${details_args[@]}" --delete-branch --squash $"${additional_args[@]}"
+      if [[ "$ASYNC" == "true" ]]; then
+        execute_async_merge "$pr_url" "$ASYNC_WORK_FILE"
+      else
+        gh pr merge "$pr_url" --delete-branch --squash $"${additional_args[@]}"
+      fi
     else
       echo -e "\n⚠️ no squash-merge body in the PR, not merging"
     fi
